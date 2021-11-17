@@ -9,7 +9,7 @@ from dlc_practical_prologue import *
 from matplotlib import pyplot as plt
 
 import torchvision
-#from comparisonNet1 import comparisionNet
+from comparisonNet1 import comparisonNet
 print(len(generate_pair_sets(1)))
 
 
@@ -19,17 +19,18 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
-class comparisonNet(nn.Module):
-    def __init__(self):
-        super(comparisonNet,self).__init__()
-        self.conv1 = nn.Conv2d(2,2,10)
-        self.conv2 = nn.Conv2d(2,2,5)
-        #self.fc1 = nn.Linear()
+# class comparisonNet(nn.Module):
+#     def __init__(self):
+#         super(comparisonNet,self).__init__()
+#         self.conv1 = nn.Conv2d(2,2,10)
+#         self.conv2 = nn.Conv2d(2,2,5)
+#         #self.fc1 = nn.Linear()
         
         
-    def forward(self,x):
-        x = F.relu(F.max_pool2d(self.conv1(x),kernel_size = 2))
-        return x
+#     def forward(self,x):
+#         x = F.relu(F.max_pool2d(self.conv1(x),kernel_size = 2))
+#         # x = F.relu(F.max_pool2d(self.))
+#         return x
 
 def showDigit(digit):
     """
@@ -76,9 +77,21 @@ train_target = train[train_target_id]
 train_classes = train[train_classes_id]
 
 compnet = comparisonNet()
+criterion = torch.nn.MSELoss()
+optimizer = torch.optim.Adam(compnet.parameters(), lr=0.001)
 
-output = compnet.forward(train_image[0:5])
+output = compnet(train_image[0:1])
 
+print('\nmodel parameters : \n')
+for k in compnet.parameters():
+    print(k.size())
+
+#%% Training the model
+epochs = 10
+for e in range(epochs):
+    for image in train_image:
+        pass
+        
 print(output.shape)
 
 

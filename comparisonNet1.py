@@ -6,15 +6,24 @@ import torch.nn as nn
 
 import torch.nn.functional as F
 
-class comparisionNet(nn.Module):
+class comparisonNet(nn.Module):
     def __init__(self):
-        super(comparisionNet,self).__init__()
-        self.conv1 = nn.Conv2d(2,2,10)
-        self.conv2 = nn.Conv2d(2,2,5)
-        self.fc1 = nn.Linear()
+        super(comparisonNet,self).__init__()
+        self.conv1 = nn.Conv2d(2,10,2)
+        self.conv2 = nn.Conv2d(10,20,4)
+        self.fc1 = nn.Linear(500,16)
+        self.fc2 = nn.Linear(16,1)
         
         
     def forward(self,x):
-        x = F.relu(F.max_pool2d(self.conv1(x),kernel_size = 2))
+        x = F.relu(self.conv1(x))
+        print(x.shape)
+        #x = nn.BatchNorm2d(x)
+        x = F.relu(F.max_pool2d(self.conv2(x),kernel_size = 2))
+        print(x.shape)
+        x = F.relu(self.fc1(x.flatten()))
+        print(x.shape)
+        x = F.relu(self.fc2(x))
+        print(x.shape)
         return x
         
