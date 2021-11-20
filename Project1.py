@@ -16,6 +16,7 @@ print(len(generate_pair_sets(1)))
 import torch
 import torchvision
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 import torch.nn.functional as F
 
@@ -70,14 +71,18 @@ plt.show()
 
 #%% Building training set
 
-train = generate_pair_sets(100)
+dataset = generate_pair_sets(1000)
 
-train_image = train[train_input_id]
-train_target = train[train_target_id]
-train_classes = train[train_classes_id]
+train_image = dataset[train_input_id].float()
+train_target = dataset[train_target_id].float()
+train_classes = dataset[train_classes_id].float()
+
+test_image = dataset[test_input_id].float()
+test_target = dataset[test_target_id].float()
+test_classes = dataset[test_classes_id].float()
 
 compnet = comparisonNet()
-criterion = torch.nn.MSELoss()
+criterion = torch.nn.BCELoss()
 optimizer = torch.optim.Adam(compnet.parameters(), lr=0.001)
 
 output = compnet(train_image[0:1])
@@ -87,12 +92,36 @@ for k in compnet.parameters():
     print(k.size())
 
 #%% Training the model
+
+batch_size = 1
+
+train_loader = DataLoader(dataset=list(zip(train_image,train_target)), batch_size=batch_size, shuffle=True)
+
 epochs = 10
 for e in range(epochs):
-    for image in train_image:
-        pass
+    # for idx,img_input in enumerate(train_image):
+    print('current epoch : %i' % e)
+    for img_input,target in iter(train_loader):
         
-print(output.shape)
+        output = compnet(img_input)
+        loss = criterion(output,target)
+        
+        compnet.zero_grad()#reset the gradient for each mini-batch
+        loss.backward()
+        optimizer.step()
+        
+#%% Test of the model
+
+test_loader = DataLoader(dataset=list(zip(test_image,test_target)), batch_size=batch_size, shuffle=True)
+
+incorrect_count = 0
+for img_input,target in iter(test_loader):        
+    output = compnet(img_input)
+    if (target-output.round()).item() != 0:
+        incorrect_count += 1
+    
+print('Final score : %f ' % ((1-incorrect_count/len(test_loader))*100))
+
 
 
 

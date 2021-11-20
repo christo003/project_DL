@@ -17,13 +17,13 @@ class comparisonNet(nn.Module):
         
     def forward(self,x):
         x = F.relu(self.conv1(x))
-        print(x.shape)
+        # print(x.shape)
         #x = nn.BatchNorm2d(x)
         x = F.relu(F.max_pool2d(self.conv2(x),kernel_size = 2))
-        print(x.shape)
+        # print(x.shape)
         x = F.relu(self.fc1(x.flatten()))
-        print(x.shape)
-        x = F.relu(self.fc2(x))
-        print(x.shape)
+        # print(x.shape)
+        x = F.sigmoid(self.fc2(x))
+        # print(x.shape)
         return x
         
