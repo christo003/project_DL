@@ -20,6 +20,8 @@ from torch.utils.data import DataLoader
 
 import torch.nn.functional as F
 
+import time
+
 # class comparisonNet(nn.Module):
 #     def __init__(self):
 #         super(comparisonNet,self).__init__()
@@ -93,14 +95,16 @@ for k in compnet.parameters():
 
 #%% Training the model
 
+print('\n ### Training Start ### \n')
 batch_size = 1
 
 train_loader = DataLoader(dataset=list(zip(train_image,train_target)), batch_size=batch_size, shuffle=True)
 
-epochs = 10
+start_training = time.time()
+epochs = 20
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
-    print('current epoch : %i' % e)
+    print('current epoch : %i/%i' % (e,epochs))
     for img_input,target in iter(train_loader):
         
         output = compnet(img_input)
@@ -110,7 +114,14 @@ for e in range(epochs):
         loss.backward()
         optimizer.step()
         
+    #Il manque l'étape de validation a la fin de l'epochs
+    
+stop_training = time.time()
+
+print('\nTraining took : %f seconds \n' % (stop_training-start_training))
 #%% Test of the model
+
+print('\n ### Testing Start ### \n')
 
 test_loader = DataLoader(dataset=list(zip(test_image,test_target)), batch_size=batch_size, shuffle=True)
 
@@ -120,7 +131,7 @@ for img_input,target in iter(test_loader):
     if (target-output.round()).item() != 0:
         incorrect_count += 1
     
-print('Final score : %f ' % ((1-incorrect_count/len(test_loader))*100))
+print('Final score : %f %%' % ((1-incorrect_count/len(test_loader))*100))
 
 
 
