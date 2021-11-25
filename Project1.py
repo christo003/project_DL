@@ -85,23 +85,18 @@ test_image = dataset[test_input_id].float()
 test_target = dataset[test_target_id].float()
 test_classes = dataset[test_classes_id].float()
 
-compnet1 = comparisonNet1()
-criterion1 = torch.nn.BCELoss()
-optimizer1 = torch.optim.Adam(compnet1.parameters(), lr=0.001)
 
-output = compnet1(train_image[0:1])
 
-print('\nmodel parameters : \n')
-for k in compnet1.parameters():
-    print(k.size())
 
 
 #%% Utils
 
 def evaluateAccuracy(dataloader,model):
     incorrect_count = 0
-    for img_input,target in iter(dataloader):        
+    for img_input,target,test in iter(dataloader):        
         output = model(img_input)
+        if isinstance(output,tuple):
+            output = output[2]#trick because one time we have one output, and after we have three output...to optimize
         incorrect_count += sum(abs(target.view(-1,1)-output.round()))
         
 
@@ -111,30 +106,37 @@ def evaluateAccuracy(dataloader,model):
 print('\n ### Training Start ### \n')
 
 
-dataset = list(zip(train_image,train_target))
+dataset = list(zip(train_image,train_target,train_classes))
 random.shuffle(dataset)
 dataset_train = dataset[:-300]
 dataset_val = dataset[-300:]
-dataset_test = list(zip(test_image,test_target))
+dataset_test = list(zip(test_image,test_target,test_classes))
 
 batch_size = 100
+
+compnet1 = comparisonNet1()
+optimizer1 = torch.optim.Adam(compnet1.parameters(), lr=0.001)
+
+
+criterion1 = torch.nn.BCELoss()
+
 
 train_loader = DataLoader(dataset=dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset=dataset_val, batch_size=batch_size, shuffle=True)
 test_loader = DataLoader(dataset=dataset_test, batch_size=batch_size, shuffle=True)
 
 start_training = time.time()
-epochs = 50
+epochs = 25
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
     print('current epoch : %i/%i' % (e,epochs))
-    for img_input,target in iter(train_loader):
+    for img_input,target,target_digit in iter(train_loader):
         
         output = compnet1(img_input)
-        loss1 = criterion1(output,target)
         
+        loss = criterion1(output,target)
         compnet1.zero_grad()#reset the gradient for each mini-batch
-        loss1.backward()
+        loss.backward()
         optimizer1.step()
     
     
@@ -157,6 +159,8 @@ print('Final score : %f %%' % (evaluateAccuracy(test_loader, compnet1)))
 print('\n ### Training Start ### \n')
 
 compnet2 = comparisonNet2()
+criterion_digit_1 = torch.nn.BCELoss()
+criterion_digit_2 = torch.nn.BCELoss()
 criterion2 = torch.nn.BCELoss()
 optimizer2 = torch.optim.Adam(compnet2.parameters(), lr=0.001)
 
@@ -165,13 +169,21 @@ epochs = 50
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
     print('current epoch : %i/%i' % (e,epochs))
-    for img_input,target in iter(train_loader):
+    for img_input,target,target_digit in iter(train_loader):
         
-        output = compnet2(img_input)
-        loss2 = criterion2(output,target)
+        output1,output2,output = compnet2(img_input)
+        
+        target_digit1_oh = F.one_hot(target_digit[:,0].to(torch.int64)).float()
+        target_digit2_oh = F.one_hot(target_digit[:,1].to(torch.int64)).float()
+
+        
+        loss_digit_1 = criterion_digit_1(output1,target_digit1_oh)
+        loss_digit_2 = criterion_digit_2(output2,target_digit2_oh)
+        loss_class = criterion2(output,target)        
+        loss_final = loss_digit_1+loss_digit_2+loss_class
         
         compnet2.zero_grad()#reset the gradient for each mini-batch
-        loss2.backward()
+        loss_final.backward()
         optimizer2.step()
     
     
