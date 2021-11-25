@@ -9,9 +9,11 @@ from dlc_practical_prologue import *
 from matplotlib import pyplot as plt
 
 import torchvision
-from comparisonNet1 import comparisonNet
+from comparisonNets import comparisonNet1, comparisonNet2
 print(len(generate_pair_sets(1)))
 
+import sklearn
+import random
 
 import torch
 import torchvision
@@ -83,37 +85,57 @@ test_image = dataset[test_input_id].float()
 test_target = dataset[test_target_id].float()
 test_classes = dataset[test_classes_id].float()
 
-compnet = comparisonNet()
-criterion = torch.nn.BCELoss()
-optimizer = torch.optim.Adam(compnet.parameters(), lr=0.001)
+compnet1 = comparisonNet1()
+criterion1 = torch.nn.BCELoss()
+optimizer1 = torch.optim.Adam(compnet1.parameters(), lr=0.001)
 
-output = compnet(train_image[0:1])
+output = compnet1(train_image[0:1])
 
 print('\nmodel parameters : \n')
-for k in compnet.parameters():
+for k in compnet1.parameters():
     print(k.size())
 
-#%% Training the model
 
+#%% Utils
+
+def evaluateAccuracy(dataloader,model):
+    incorrect_count = 0
+    for img_input,target in iter(dataloader):        
+        output = model(img_input)
+        if (target-output.round()).item() != 0:
+            incorrect_count += 1
+    return (1-incorrect_count/len(dataloader))*100
+
+#%% Training the model
 print('\n ### Training Start ### \n')
 batch_size = 1
 
-train_loader = DataLoader(dataset=list(zip(train_image,train_target)), batch_size=batch_size, shuffle=True)
+dataset = list(zip(train_image,train_target))
+random.shuffle(dataset)
+dataset_train = dataset[:-300]
+dataset_val = dataset[-300:]
+dataset_test = list(zip(test_image,test_target))
+
+train_loader = DataLoader(dataset=dataset_train, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(dataset=dataset_val, batch_size=batch_size, shuffle=True)
 
 start_training = time.time()
-epochs = 20
+epochs = 25
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
     print('current epoch : %i/%i' % (e,epochs))
     for img_input,target in iter(train_loader):
         
-        output = compnet(img_input)
-        loss = criterion(output,target)
+        output = compnet1(img_input)
+        loss1 = criterion1(output,target)
         
-        compnet.zero_grad()#reset the gradient for each mini-batch
-        loss.backward()
-        optimizer.step()
-        
+        compnet1.zero_grad()#reset the gradient for each mini-batch
+        loss1.backward()
+        optimizer1.step()
+    
+    
+    
+    print('Validation : %f %%' % (evaluateAccuracy(val_loader,compnet1)))
     #Il manque l'étape de validation a la fin de l'epochs
     
 stop_training = time.time()
@@ -123,20 +145,51 @@ print('\nTraining took : %f seconds \n' % (stop_training-start_training))
 
 print('\n ### Testing Start ### \n')
 
-test_loader = DataLoader(dataset=list(zip(test_image,test_target)), batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=dataset_test, batch_size=batch_size, shuffle=True)
 
 incorrect_count = 0
 for img_input,target in iter(test_loader):        
-    output = compnet(img_input)
+    output = compnet1(img_input)
     if (target-output.round()).item() != 0:
         incorrect_count += 1
     
-print('Final score : %f %%' % ((1-incorrect_count/len(test_loader))*100))
+print('Final score : %f %%' % (evaluateAccuracy(test_loader, compnet1)))
 
 
+#%% Training of 2nd architecture
 
+compnet2 = comparisonNet2()
+criterion2 = torch.nn.BCELoss()
+optimizer2 = torch.optim.Adam(compnet2.parameters(), lr=0.001)
 
+start_training = time.time()
+epochs = 25
+for e in range(epochs):
+    # for idx,img_input in enumerate(train_image):
+    print('current epoch : %i/%i' % (e,epochs))
+    for img_input,target in iter(train_loader):
+        
+        output = compnet2(img_input)
+        loss2 = criterion2(output,target)
+        
+        compnet2.zero_grad()#reset the gradient for each mini-batch
+        loss2.backward()
+        optimizer2.step()
+    
+    
+    
+    print('Validation : %f %%' % (evaluateAccuracy(val_loader,compnet2)))
+    #Il manque l'étape de validation a la fin de l'epochs
+    
+stop_training = time.time()
 
+print('\nTraining took : %f seconds \n' % (stop_training-start_training))
+
+#%% Test of the model
+print('\n ### Testing Start ### \n')
+print('Final score : %f %%' % (evaluateAccuracy(test_loader, compnet2)))
+
+#%% 3rd architecture
 
 
 
