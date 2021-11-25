@@ -102,13 +102,14 @@ def evaluateAccuracy(dataloader,model):
     incorrect_count = 0
     for img_input,target in iter(dataloader):        
         output = model(img_input)
-        if (target-output.round()).item() != 0:
-            incorrect_count += 1
-    return (1-incorrect_count/len(dataloader))*100
+        incorrect_count += sum(abs(target.view(-1,1)-output.round()))
+        
+
+    return (1-incorrect_count/len(dataloader.dataset))*100
 
 #%% Training the model
 print('\n ### Training Start ### \n')
-batch_size = 1
+
 
 dataset = list(zip(train_image,train_target))
 random.shuffle(dataset)
@@ -116,11 +117,14 @@ dataset_train = dataset[:-300]
 dataset_val = dataset[-300:]
 dataset_test = list(zip(test_image,test_target))
 
+batch_size = 100
+
 train_loader = DataLoader(dataset=dataset_train, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(dataset=dataset_val, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=dataset_test, batch_size=batch_size, shuffle=True)
 
 start_training = time.time()
-epochs = 25
+epochs = 50
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
     print('current epoch : %i/%i' % (e,epochs))
@@ -145,25 +149,19 @@ print('\nTraining took : %f seconds \n' % (stop_training-start_training))
 
 print('\n ### Testing Start ### \n')
 
-test_loader = DataLoader(dataset=dataset_test, batch_size=batch_size, shuffle=True)
-
-incorrect_count = 0
-for img_input,target in iter(test_loader):        
-    output = compnet1(img_input)
-    if (target-output.round()).item() != 0:
-        incorrect_count += 1
-    
 print('Final score : %f %%' % (evaluateAccuracy(test_loader, compnet1)))
 
 
 #%% Training of 2nd architecture
+
+print('\n ### Training Start ### \n')
 
 compnet2 = comparisonNet2()
 criterion2 = torch.nn.BCELoss()
 optimizer2 = torch.optim.Adam(compnet2.parameters(), lr=0.001)
 
 start_training = time.time()
-epochs = 25
+epochs = 50
 for e in range(epochs):
     # for idx,img_input in enumerate(train_image):
     print('current epoch : %i/%i' % (e,epochs))
