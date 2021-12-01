@@ -79,7 +79,6 @@ class LossMSE(Module): #le loss doit il appartenir au module ?
 
 
 def forward(input):#(w1, b1, w2, b2, x):
-    #print(len(input))
     Weights,Biais,Activation, train_input=input
 
     x = train_input
@@ -90,37 +89,29 @@ def forward(input):#(w1, b1, w2, b2, x):
         out_s.append(s)
         x = Activation[i].sigma(s)
         out_x.append(x)
-    #print(x.size())
-    #print(Weights[-1].size())
-    #print(Biais[-1].size())
-    #s = Weights[-1].mv(x)+Biais[-1]
     return [out_x,out_s]
 
 def backward(gradwrtoutput):#(w1, b1, w2, b2,t,x, s1, x1, s2, x2,dl_dw1, dl_db1, dl_dw2, dl_db2):
-    #print(len(gradwrtoutput))
-    Weights,Biais,Activation,train_target,layer_output,dl_dw,dl_db,Loss = gradwrtoutput.copy()
-    N=len(dl_dw)-1
-    print(N)
-    #print(layer_output)
+    Weights,Biais,Activation,train_target,layer_output,dl_dw,dl_db,Loss = gradwrtoutput
+    N=len(dl_dw)
     x,s=layer_output
     x0 = x[0]
-    #print(x[N+1])
-    dl_dx2 = Loss.dsigma(x[N+1], train_target)
-    dl_ds2 = Activation[N].dsigma(s[N]) * dl_dx2
-    dl_dw2 = dl_dw[N]
-    dl_db2 = dl_db[N]
-    dl_dw2.add_(dl_ds2.view(-1, 1).mm(x[N].view(1, -1)))
+    dl_dx2 = Loss.dsigma(x[N], train_target)
+    dl_ds2 = Activation[N-1].dsigma(s[N-1]) * dl_dx2
+    dl_dw2 = dl_dw[N-1]
+    dl_db2 = dl_db[N-1]
+    dl_dw2.add_(dl_ds2.view(-1, 1).mm(x[N-1].view(1, -1)))
     dl_db2.add_(dl_ds2)
     out_dl_dw = [dl_dw2]
     out_dl_db = [dl_db2]
-    N=N-1 
-    for i in range(N):
-        #print(i)
+    
+    for i in range(1,N,1):
+
         dl_dx1 = Weights[N-i].t().mv(dl_ds2)
-        dl_ds1 = Activation[N-i].dsigma(s[N-i]) * dl_dx1
-        dl_dw1 = dl_dw[N-i]
-        dl_db1 = dl_db[N-i]
-        dl_dw1.add_(dl_ds1.view(-1, 1).mm(x[N-i].view(1, -1)))
+        dl_ds1 = Activation[N-1-i].dsigma(s[N-1-i]) * dl_dx1
+        dl_dw1 = dl_dw[N-1-i]
+        dl_db1 = dl_db[N-1-i]
+        dl_dw1.add_(dl_ds1.view(-1, 1).mm(x[N-1-i].view(1, -1)))
         dl_db1.add_(dl_ds1)
         out_dl_dw.insert(0,dl_dw1)
         out_dl_db.insert(0,dl_db1)
@@ -128,7 +119,7 @@ def backward(gradwrtoutput):#(w1, b1, w2, b2,t,x, s1, x1, s2, x2,dl_dw1, dl_db1,
     return out_dl_dw,out_dl_db
 
 
-# In[9]:
+# In[7]:
 
 
 train_input, train_target, test_input, test_target = prologue.load_data(one_hot_labels = True,
@@ -186,19 +177,16 @@ for k in range(1000):
     for n in range(nb_train_samples):
         input = [Weights,Biais,Activation, train_input[n]]
         x,s = forward(input)
-        #print(len(x))
         gradwrtoutput = [Weights,Biais,Activation,train_target[n],[x,s],dl_dw,dl_db,loss]
         x2 = x[-1]
         pred = x2.max(0)[1].item()
-        #print(pred)
         if train_target[n, pred] < 0.5:
             nb_train_errors = nb_train_errors + 1
-        #print(x2.size())
-        #print(train_target[n].size())
+
         acc_loss = acc_loss + loss.sigma(x2, train_target[n])
     
         dl_dw,dl_db=backward(gradwrtoutput)#(w1, b1, w2, b2,train_target[n],x0, s1, x1, s2, x2,dl_dw1, dl_db1, dl_dw2, dl_db2)
-        #print(len(x))
+
     # Gradient step
     for i in range(len(Weights)):
         Weights[i]= Weights[i]-eta * dl_dw[i]
@@ -207,22 +195,19 @@ for k in range(1000):
     #b1 = b1 - eta * dl_db1
     #w2 = w2 - eta * dl_dw2
     #b2 = b2 - eta * dl_db2
-
-
-# In[ ]:
-
-
-
-
+    
+    
     # Test error
 
     nb_test_errors = 0
-
+    
     for n in range(test_input.size(0)):
-        _, _, _, _, x2 = forward_pass(w1, b1, w2, b2, test_input[n])
-
+        input = [Weights,Biais,Activation, test_input[n]]
+        x,s = forward(input)
+        x2 = x[-1]
         pred = x2.max(0)[1].item()
-        if test_target[n, pred] < 0.5: nb_test_errors = nb_test_errors + 1
+        if test_target[n, pred] < 0.5:
+            nb_test_errors = nb_test_errors + 1
 
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% test_error {:.02f}%'
           .format(k,
@@ -234,29 +219,9 @@ for k in range(1000):
 # In[ ]:
 
 
-a=[[0,1,2,3],[1,2],[1,1,1,1]]
-def f(input):
-    a,b,c = input
-    print(a)
-    print(c)
 
 
-# In[ ]:
-
-
-f(a)
-
-
-# In[ ]:
-
-
-print(nb_train_samples)
-
-
-# In[ ]:
-
-
-a[len(a)]
+    
 
 
 # In[ ]:
