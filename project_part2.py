@@ -71,13 +71,13 @@ class MSE(Module):
         super().__init__()
         self.net = []
     def sigma(self,x,y):
-        return (x - y).pow(2).sum() 
+        return (x - y).pow(2).sum()
     def dsigma(self,x,y):
         return 2*(x - y)
     
 
 
-# In[11]:
+# In[6]:
 
 
 class Loss(Module):  
@@ -99,32 +99,49 @@ class Loss(Module):
     def backward(self,*gradwrtoutput): 
         x,s = self.net.forward(self.net.train)
         x2 = x[-1]
-        pred = x2.max(0)[1].item()
-        if self.net.train_target[ pred] < 0.5:
+        #pred = x2.max(0)[1].item()
+        if (self.net.train_target-x2).abs() < 0.5:
             self.nb_train_errors +=  1
         
-        self.acc_loss+= self.acc_loss + self.loss.sigma(x2, self.net.train_target)
+        self.acc_loss += self.loss.sigma(x2, self.net.train_target)
         
         gradwrtoutput = [self.net.train_target,[x,s],self.loss]
         self.net.backward(*gradwrtoutput)
 
 
-# In[12]:
+# In[7]:
 
 
 class CrossEntropy(Module):
     def __init__(self):
         super().__init__()
     def sigma(self,x,y):
-        return x[y].exp().div(x.exp().sum()).log()
+        y_=y.argmax().item()
+        return -(x[y_].exp().div(x.exp().sum()).log())
     def dsigma(self,x,y):
+        y_=y.argmax().item()
         out= x.exp().div(x.exp().sum())
-        out[y]=1-x[y].exp().div(x.exp().sum())
+        out[y_]=1-x[y_].exp().div(x.exp().sum())
         return out 
    
 
 
-# In[13]:
+# In[8]:
+
+
+class Relu( Module ) :
+    def __init__(self):
+        super().__init__()
+    def sigma(self,x):
+        return x.max(empty(x.size(0)).zero_())
+    def dsigma(self,x):
+        out = x
+        out[x>0]=1
+        return out
+   
+
+
+# In[9]:
 
 
 class Net(Module):
@@ -200,7 +217,7 @@ class Net(Module):
         self.train_target = train_target
 
 
-# In[14]:
+# In[10]:
 
 
 class Sequential(Module):
@@ -222,26 +239,58 @@ class Sequential(Module):
         return net 
 
 
-# In[15]:
+# In[11]:
 
 
-train_input, train_target, test_input, test_target = prologue.load_data(one_hot_labels = True,
-                                                                        normalize = True)
+def one_hot(a):
+    num_class = a.max()+1
+    N=a.size(0)
+    out = empty(N,num_class).zero_()
+    for i in range(N) :
+        out[i][a[i]]=1 
+    return out 
+        
 
-nb_classes = train_target.size(1)
+
+# In[12]:
+
+
+def generate_disc_set(nb):
+    input = empty(nb, 2).uniform_(-1, 1)
+    target = input.pow(2).sum(1).sub(2 / math.pi).sign().add(1).div(2).long()
+    
+    return input, target#one_hot(target)
+
+
+# In[13]:
+
+
+
+
+train_input, train_target = generate_disc_set(1000)
+test_input, test_target = generate_disc_set(1000)
+
+mean, std = train_input.mean(), train_input.std()
+
+train_input.sub_(mean).div_(std)
+test_input.sub_(mean).div_(std)
+
+mini_batch_size = 100
+
+
+nb_classes = 1#train_target.size(1)
 nb_train_samples = train_input.size(0)
 
 zeta = 0.90
 
-train_target = train_target * zeta
-test_target = test_target * zeta
 
-nb_hidden = 50
+
+nb_hidden = 25
 eta = 1e-1 / nb_train_samples
 epsilon = 1e-6
 
 
-net = Sequential(Linear (train_input.size(1),(nb_hidden)),Tanh(),Linear( nb_hidden,nb_classes),Tanh()).init_net()
+net = Sequential(Linear (train_input.size(1),25),Tanh(),Linear( 25,25),Relu(),Linear( 25,nb_classes),Tanh()).init_net()
 
 loss = Loss(MSE(),net)
 
@@ -278,8 +327,8 @@ for k in range(1000):
         input = test_input[n]
         x,s = net.forward(input)
         x2 = x[-1]
-        pred = x2.max(0)[1].item()
-        if test_target[n, pred] < 0.5:
+        #pred = x2.max(0)[1].item()
+        if (test_target[n]-x2).abs() < 0.5:
             nb_test_errors = nb_test_errors + 1
 
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% test_error {:.02f}%'
@@ -289,4 +338,21 @@ for k in range(1000):
                   (100 * nb_test_errors) / test_input.size(0)))
     loss.nb_train_errors  = 0
     loss.acc_loss=0
+
+
+# In[ ]:
+
+
+#MSE logging the loss signifie -> faire un entrainement avec log(mse) ou bien apres l'entrianemetn pour l'évaluation apprliquer le log ?? 
+
+
+# In[ ]:
+
+
+# a faire le SGD ! 
+# pourquoi mon erreur augmente ??? 
+# que signifie 3 couche caché avec 25 unité ? 
+# comment faire en sorte que le predict soit bien ? 
+# vaut mieux avoir une sortie a savoir une valeur et voir si elle se rapproche de la valeur recherché ? 
+# faire un plot avec avec un entrainement d'un ensemble de valeur dans un carré uniforme et voir quel sont les valeur correctment classifié 
 
