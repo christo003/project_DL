@@ -8,11 +8,12 @@
 # inspired from Francois Fleuret <francois@fleuret.org> code (practical3)
 
 import math
-import torch
+from torch import empty
+from torch import set_grad_enabled
 import numpy as np
 import dlc_practical_prologue as prologue
 
-torch.set_grad_enabled(False)
+set_grad_enabled(False)
 
 
 # In[2]:
@@ -35,8 +36,8 @@ class Linear(Module):
         super().__init__()
         epsilon = 1e-6
           
-        self.weights=(torch.empty( hidden_size,input_size).normal_(0,epsilon))#Weight
-        self.biais=( torch.empty(hidden_size).normal_(0,epsilon)) #bias
+        self.weights=(empty( hidden_size,input_size).normal_(0,epsilon))#Weight
+        self.biais=( empty(hidden_size).normal_(0,epsilon)) #bias
 
     def sigma(self,x):
         return self.weights.mv(x)+self.biais
@@ -65,18 +66,65 @@ class Tanh(Module):
 # In[5]:
 
 
-class LossMSE(Module):  
+class MSE(Module):  
     def __init__(self):
         super().__init__()
+        self.net = []
     def sigma(self,x,y):
         return (x - y).pow(2).sum() 
     def dsigma(self,x,y):
         return 2*(x - y)
-   
+    
+
+
+# In[11]:
+
+
+class Loss(Module):  
+    def __init__(self,loss,net):
+        super().__init__()
+        self.net = net
+        self.loss = loss
+        self.acc_loss=0
+        self.nb_train_errors=0
+    def sigma(self,x,y):
+        return self.loss.sigma(x,y)
+    def dsigma(self,x,y):
+        return self.dloss.sigma(x,y)
+    def assign(self, net):
+        self.net =net 
+    #def prediction(self, *input):
+    #    return self.loss.sigma(self.net.forward_value)
+    
+    def backward(self,*gradwrtoutput): 
+        x,s = self.net.forward(self.net.train)
+        x2 = x[-1]
+        pred = x2.max(0)[1].item()
+        if self.net.train_target[ pred] < 0.5:
+            self.nb_train_errors +=  1
         
+        self.acc_loss+= self.acc_loss + self.loss.sigma(x2, self.net.train_target)
+        
+        gradwrtoutput = [self.net.train_target,[x,s],self.loss]
+        self.net.backward(*gradwrtoutput)
 
 
-# In[6]:
+# In[12]:
+
+
+class CrossEntropy(Module):
+    def __init__(self):
+        super().__init__()
+    def sigma(self,x,y):
+        return x[y].exp().div(x.exp().sum()).log()
+    def dsigma(self,x,y):
+        out= x.exp().div(x.exp().sum())
+        out[y]=1-x[y].exp().div(x.exp().sum())
+        return out 
+   
+
+
+# In[13]:
 
 
 class Net(Module):
@@ -86,6 +134,10 @@ class Net(Module):
         self.Activation = []
         self.dl_dw = []
         self.dl_db = []
+        self.train = []
+        self.train_target = []
+        self.forward_value=[]
+        
     def forward(self,*input):
         train_input=input[0]
         x = train_input
@@ -131,8 +183,8 @@ class Net(Module):
     def init(self,new_Parameters,new_Activation):
         self.Parameters= new_Parameters
         self.Activation = new_Activation
-        self.dl_dw = [torch.empty(p.param()[0].size()) for p in new_Parameters]
-        self.dl_db = [torch.empty(p.param()[1].size()) for p in new_Parameters]
+        self.dl_dw = [empty(p.param()[0].size()) for p in new_Parameters]
+        self.dl_db = [empty(p.param()[1].size()) for p in new_Parameters]
     def set_param(self,num_layer,new_w,new_b):
         self.Parameters[num_layer].set_param(new_w,new_b)
     def get_grad(self,num_layer):
@@ -143,10 +195,12 @@ class Net(Module):
         for db in self.dl_db:
             db.zero_()
 
+    def assign(self, train,train_target):
+        self.train = train
+        self.train_target = train_target
 
 
-
-# In[7]:
+# In[14]:
 
 
 class Sequential(Module):
@@ -168,7 +222,7 @@ class Sequential(Module):
         return net 
 
 
-# In[13]:
+# In[15]:
 
 
 train_input, train_target, test_input, test_target = prologue.load_data(one_hot_labels = True,
@@ -189,31 +243,23 @@ epsilon = 1e-6
 
 net = Sequential(Linear (train_input.size(1),(nb_hidden)),Tanh(),Linear( nb_hidden,nb_classes),Tanh()).init_net()
 
-loss = LossMSE()
+loss = Loss(MSE(),net)
+
 
 for k in range(1000):
 
     # Back-prop
 
-    acc_loss = 0
-    nb_train_errors = 0
+
     
     net.zero_grad()
 
 
-    for n in range(nb_train_samples):
-        input =  train_input[n]
-        x,s = net.forward(input)
+    for n in range(nb_train_samples):  
         
-        x2 = x[-1]
-        pred = x2.max(0)[1].item()
-        if train_target[n, pred] < 0.5:
-            nb_train_errors = nb_train_errors + 1
-        acc_loss = acc_loss + loss.sigma(x2, train_target[n])
-        
-        
-        gradwrtoutput = [train_target[n],[x,s],loss]
-        net.backward(*gradwrtoutput)
+        net.assign(train_input[n],train_target[n])
+        #gradwrtoutput = [train_target[n],[x,s],loss]
+        loss.backward()
 
     # Gradient step
    
@@ -238,20 +284,9 @@ for k in range(1000):
 
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% test_error {:.02f}%'
           .format(k,
-                  acc_loss,
-                  (100 * nb_train_errors) / train_input.size(0),
+                  loss.acc_loss,
+                  (100 * loss.nb_train_errors) / train_input.size(0),
                   (100 * nb_test_errors) / test_input.size(0)))
-
-
-# In[14]:
-
-
-
-train_input.size()
-
-
-# In[ ]:
-
-
-
+    loss.nb_train_errors  = 0
+    loss.acc_loss=0
 
