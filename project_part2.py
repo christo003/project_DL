@@ -35,14 +35,30 @@ class Linear(Module):
     def __init__(self,input_size, hidden_size):
         super().__init__()
         epsilon = 1e-6
-          
+        self.hidden_size = hidden_size
+        self.input_size = input_size
         self.weights=(empty( hidden_size,input_size).normal_(0,epsilon))#Weight
         self.biais=( empty(hidden_size).normal_(0,epsilon)) #bias
 
     def sigma(self,x):
-        return self.weights.mv(x)+self.biais
+        out = 0
+        if len(x.size())>1:
+            #print(self.weights.mm(x.T).size())
+            #print(self.biais.size())
+            #print(self.biais.view(-1,1)*(empty(self.hidden_size,x.size(0)).zero_().add(1)))
+            
+            out = self.weights.mm(x)+self.biais.view(-1,1)*(empty(self.hidden_size,x.size(1)).zero_().add(1))
+        else : 
+            out = self.weights.mv(x)+self.biais
+        return out 
     def dsigma(self,x):
-        return self.weights.t().mv(x)
+        out = 0
+        if len(x.size())>1:
+            out = self.weights.t().mm(x.T)
+        else : 
+            out = self.weights.t().mv(x)
+            
+        return out
     def param(self):
         return [self.weights,self.biais]
     def set_param(self,new_w,new_b):
@@ -99,9 +115,9 @@ class Loss(Module):
     def backward(self,*gradwrtoutput): 
         x,s = self.net.forward(self.net.train)
         x2 = x[-1]
-        #pred = x2.max(0)[1].item()
-        if (self.net.train_target-x2).abs() < 0.5:
-            self.nb_train_errors +=  1
+        pred = x2.max(0)[1]
+        pred[pred<0.5]=1
+        self.nb_train_errors = pred.sum()
         
         self.acc_loss += self.loss.sigma(x2, self.net.train_target)
         
@@ -133,7 +149,7 @@ class Relu( Module ) :
     def __init__(self):
         super().__init__()
     def sigma(self,x):
-        return x.max(empty(x.size(0)).zero_())
+        return x.max(empty(x.size()).zero_())
     def dsigma(self,x):
         out = x
         out[x>0]=1
@@ -154,7 +170,7 @@ class Net(Module):
         self.train = []
         self.train_target = []
         self.forward_value=[]
-        
+        self.num_sample = 0
     def forward(self,*input):
         train_input=input[0]
         x = train_input
@@ -174,10 +190,14 @@ class Net(Module):
         N=len(dl_dw)
         x,s=layer_output
         x0 = x[0]
-        dl_dx2 = Loss.dsigma(x[N], train_target)
+        #print(x[N].size())
+        dl_dx2 = Loss.dsigma(x[N].view(-1), train_target)
         dl_ds2 = self.Activation[N-1].dsigma(s[N-1]) * dl_dx2
         dl_dw2 = dl_dw[N-1]
         dl_db2 = dl_db[N-1]
+        print(dl_ds2.size())
+        print(x[N-1].size())
+        #print(dl_dw2.size())
         dl_dw2.add_(dl_ds2.view(-1, 1).mm(x[N-1].view(1, -1)))
         dl_db2.add_(dl_ds2)
         out_dl_dw = [dl_dw2]
@@ -185,10 +205,11 @@ class Net(Module):
 
         for i in range(1,N,1):
 
-            dl_dx1 = self.Parameters[N-i].dsigma(dl_ds2)
+            dl_dx1 = self.Parameters[N-i].dsigma(dl_ds2) #c'est pas très jolie mais par Parameters je veux dire la fonction devrivant les poids de la couche cache (ici linear)
             dl_ds1 = self.Activation[N-1-i].dsigma(s[N-1-i]) * dl_dx1
             dl_dw1 = dl_dw[N-1-i]
             dl_db1 = dl_db[N-1-i]
+            
             dl_dw1.add_(dl_ds1.view(-1, 1).mm(x[N-1-i].view(1, -1)))
             dl_db1.add_(dl_ds1)
             out_dl_dw.insert(0,dl_dw1)
@@ -200,8 +221,7 @@ class Net(Module):
     def init(self,new_Parameters,new_Activation):
         self.Parameters= new_Parameters
         self.Activation = new_Activation
-        self.dl_dw = [empty(p.param()[0].size()) for p in new_Parameters]
-        self.dl_db = [empty(p.param()[1].size()) for p in new_Parameters]
+
     def set_param(self,num_layer,new_w,new_b):
         self.Parameters[num_layer].set_param(new_w,new_b)
     def get_grad(self,num_layer):
@@ -213,8 +233,19 @@ class Net(Module):
             db.zero_()
 
     def assign(self, train,train_target):
-        self.train = train
-        self.train_target = train_target
+        
+        if len(train_input.size())>1 : 
+            self.train = train.t()
+            self.train_target = train_target.t()
+            self.num_sample = train.size(0)
+            self.dl_dw = [empty(p.param()[0].size(0),p.param()[0].size(1),self.num_sample) for p in self.Parameters]
+            self.dl_db = [empty(p.param()[1].size(0),self.num_sample) for p in self.Parameters]
+        else : 
+            self.num_sample = 1
+            self.train = train
+            self.train_target = train_target
+            self.dl_dw = [empty(p.param()[0].size()) for p in self.Parameters]
+            self.dl_db = [empty(p.param()[1].size()) for p in self.Parameters]
 
 
 # In[10]:
@@ -295,19 +326,20 @@ net = Sequential(Linear (train_input.size(1),25),Tanh(),Linear( 25,25),Relu(),Li
 loss = Loss(MSE(),net)
 
 
-for k in range(1000):
+nb_epochs = 250
+
+for e in range(nb_epochs):
+    for b in range(0, train_input.size(0), mini_batch_size):
 
     # Back-prop
 
 
     
-    net.zero_grad()
-
-
-    for n in range(nb_train_samples):  
         
-        net.assign(train_input[n],train_target[n])
-        #gradwrtoutput = [train_target[n],[x,s],loss]
+
+        
+        net.assign(train_input.narrow(0, b, mini_batch_size),train_target.narrow(0, b, mini_batch_size))
+        net.zero_grad()
         loss.backward()
 
     # Gradient step
@@ -343,16 +375,48 @@ for k in range(1000):
 # In[ ]:
 
 
+net.num_sample
+
+
+# In[ ]:
+
+
 #MSE logging the loss signifie -> faire un entrainement avec log(mse) ou bien apres l'entrianemetn pour l'évaluation apprliquer le log ?? 
 
 
 # In[ ]:
 
 
-# a faire le SGD ! 
+# a faire le SGD ! :
+    #1 faire le asigne assigne un train qui est un batch
 # pourquoi mon erreur augmente ??? 
 # que signifie 3 couche caché avec 25 unité ? 
 # comment faire en sorte que le predict soit bien ? 
 # vaut mieux avoir une sortie a savoir une valeur et voir si elle se rapproche de la valeur recherché ? 
 # faire un plot avec avec un entrainement d'un ensemble de valeur dans un carré uniforme et voir quel sont les valeur correctment classifié 
+# est ce que j'utilise vrm la puissance des tenseur ??? 
+
+
+# In[ ]:
+
+
+net.train.size()
+
+
+# In[ ]:
+
+
+empty(empty(3,2).size())
+
+
+# In[ ]:
+
+
+empty(3,6).zero_().add(1).mm(empty(6,2).zero_().add(2))
+
+
+# In[ ]:
+
+
+
 
