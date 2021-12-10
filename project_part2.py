@@ -331,7 +331,7 @@ mean, std = train_input.mean(), train_input.std()
 train_input.sub_(mean).div_(std)
 test_input.sub_(mean).div_(std)
 
-mini_batch_size = 100
+
 
 
 nb_classes = train_target.size(1)
@@ -346,14 +346,25 @@ eta = 1e-1 / nb_train_samples
 epsilon = 1e-6
 
 
-net = Sequential(Linear (train_input.size(1),(nb_hidden)),Tanh(),Linear( nb_hidden,nb_hidden),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_classes),Tanh()).init_net()
+net = Sequential(Linear (train_input.size(1),(nb_hidden)),Tanh(),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_classes),Tanh()).init_net()
 
 loss = Loss(MSE(),net)
 
 
 nb_epochs = 1000
 
+mini_batch_size = 500
+
 for e in range(nb_epochs):
+    if e==400:
+        mini_batch_size=250
+    if e ==500:
+        mini_batch_size=500
+        
+    #if e == 800:
+    #    mini_batch_size=100
+    #if e == 900:
+    #    mini_batch_size=100
     for b in range(0, train_input.size(0), mini_batch_size):
 
     # Back-prop
@@ -395,37 +406,37 @@ for e in range(nb_epochs):
     loss.acc_loss=0
 
 
-# In[35]:
+# In[15]:
 
 
 from torch import save
 from torch import load
-out = {}
-i=0
-s = 'W'
-b = 'b'
-for p in net.param():
-    out[s+str(i)]=p.param()[0]
-    out[b+str(i)]=p.param()[1]
-    i+=1
-save(out,'./project_parameters')
-a = load('./project_parameters')
+#out = {}
+#i=0
+#s = 'W'
+#b = 'b'
+#for p in net.param():
+#    out[s+str(i)]=p.param()[0]
+#    out[b+str(i)]=p.param()[1]
+#    i+=1
+#save(out,'./project_parameters')
+#a = load('./project_parameters')
 
 
-# In[51]:
+# In[16]:
 
 
-save(net,'./project_net_1')
+save(net,'./project_net_2')
 
 
-# In[50]:
+# In[17]:
 
 
 # avec comme fonction d'activation que des tanh 
-out
+#out
 
 
-# In[48]:
+# In[18]:
 
 
 import matplotlib.pyplot as plt
@@ -438,6 +449,33 @@ for n in range(test_input.size(0)):
         #print(pred)
         #print(test_input[n][0].item())
         if test_target[n][ pred] < 0.5:
+            if test_target[n][0]==1:
+                plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='cyan')#la prediction dit rouge mais cest un bleu
+            if test_target[n][1]==1:
+                plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='yellow')#la prediction dit rouge mais cest un bleu
+            #nb_test_errors +=  1
+        else : 
+            if pred == 0:
+                plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='blue')
+            if pred == 1:
+                plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='red')
+            #plt.scatter(test_input[n],'b')
+
+plt.show()
+
+
+# In[19]:
+
+
+for n in range(test_input.size(0)):
+        x,s = net.forward(test_input[n])
+        #print('test_input',test_input[n])
+        x2 = x[-1]
+        pred = x2.argmax().item()
+        #print('n',n,'x2',x2)
+        #print(pred)
+        #print(test_input[n][0].item())
+        if test_target[n][0] < 0.5:
             
             plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='red')
             #nb_test_errors +=  1
@@ -447,7 +485,7 @@ for n in range(test_input.size(0)):
 plt.show()
 
 
-# In[17]:
+# In[20]:
 
 
 # à faire implémenter l'initialisation des paramètres comme expliquer dans le cours .
@@ -458,8 +496,8 @@ plt.show()
 # est ce que j'utilise vrm la puissance des tenseur ??? 
 
 
-# In[53]:
+# In[21]:
 
 
-b = load('./project_net_1')
+#b = load('./project_net_2')
 
