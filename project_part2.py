@@ -37,26 +37,23 @@ class Linear(Module):
         epsilon = 1e-6
         self.hidden_size = hidden_size
         self.input_size = input_size
-        self.weights=(empty( hidden_size,input_size).normal_(0,epsilon))#Weight
+        self.weights=(empty(input_size, hidden_size).normal_(0,epsilon))#Weight
         self.biais=( empty(hidden_size).normal_(0,epsilon)) #bias
 
     def sigma(self,x):
         out = 0
         if len(x.size())>1:
-            #print(self.weights.mm(x.T).size())
-            #print(self.biais.size())
-            #print(self.biais.view(-1,1)*(empty(self.hidden_size,x.size(0)).zero_().add(1)))
             
-            out = self.weights.mm(x)+self.biais.view(-1,1)*(empty(self.hidden_size,x.size(1)).zero_().add(1))
+            out = x.mm(self.weights)+self.biais.view(1,-1)*(empty(x.size(0),self.hidden_size).zero_().add(1))
         else : 
-            out = self.weights.mv(x)+self.biais
+            out = self.weights.t().mv(x)+self.biais
         return out 
     def dsigma(self,x):
         out = 0
         if len(x.size())>1:
-            out = self.weights.t().mm(x.T)
+            out = x.mm(self.weights.T)
         else : 
-            out = self.weights.t().mv(x)
+            out = self.weights().mv(x)
             
         return out
     def param(self):
@@ -85,10 +82,14 @@ class Tanh(Module):
 class MSE(Module):  
     def __init__(self):
         super().__init__()
-        self.net = []
     def sigma(self,x,y):
+
+        
         return (x - y).pow(2).sum()
     def dsigma(self,x,y):
+        #if len(y.size())>1:
+        #    y = y.argmax(0)
+            
         return 2*(x - y)
     
 
@@ -114,12 +115,16 @@ class Loss(Module):
     
     def backward(self,*gradwrtoutput): 
         x,s = self.net.forward(self.net.train)
-        x2 = x[-1]
-        pred = x2.max(0)[1]
-        pred[pred<0.5]=1
-        self.nb_train_errors = pred.sum()
+    
+        #print(self.net.train_target.size())
+        for n in range(self.net.num_sample):
+            x2 = x[-1][n]
+            pred = x2.max(0)[1].item()
+            #print('n',pred)
+            if self.net.train_target[n][ pred] < 0.5:
+                self.nb_train_errors +=  1
         
-        self.acc_loss += self.loss.sigma(x2, self.net.train_target)
+            self.acc_loss+=  self.loss.sigma(x2, self.net.train_target[n])
         
         gradwrtoutput = [self.net.train_target,[x,s],self.loss]
         self.net.backward(*gradwrtoutput)
@@ -151,7 +156,7 @@ class Relu( Module ) :
     def sigma(self,x):
         return x.max(empty(x.size()).zero_())
     def dsigma(self,x):
-        out = x
+        out = empty(x.size()).zero_()
         out[x>0]=1
         return out
    
@@ -190,15 +195,18 @@ class Net(Module):
         N=len(dl_dw)
         x,s=layer_output
         x0 = x[0]
-        #print(x[N].size())
-        dl_dx2 = Loss.dsigma(x[N].view(-1), train_target)
+        dl_dx2 = Loss.dsigma(x[N], train_target)
+        #print('dl_dx_2',dl_dx2.size())
+        #print('s[N-1]',s[N-1].size())
+        #print(self.Activation[N-1])
         dl_ds2 = self.Activation[N-1].dsigma(s[N-1]) * dl_dx2
         dl_dw2 = dl_dw[N-1]
         dl_db2 = dl_db[N-1]
-        print(dl_ds2.size())
-        print(x[N-1].size())
-        #print(dl_dw2.size())
-        dl_dw2.add_(dl_ds2.view(-1, 1).mm(x[N-1].view(1, -1)))
+        #print('dl_ds2',dl_ds2.size())
+        #print('x[N-1]',x[N-1].size())
+        
+        #print('dl_dw2',dl_dw2.size())
+        dl_dw2.add_( x[N-1].view(x[N-1].size(0),x[N-1].size(1),1).matmul(dl_ds2.view(dl_ds2.size(0),1,dl_ds2.size(1))))
         dl_db2.add_(dl_ds2)
         out_dl_dw = [dl_dw2]
         out_dl_db = [dl_db2]
@@ -209,8 +217,8 @@ class Net(Module):
             dl_ds1 = self.Activation[N-1-i].dsigma(s[N-1-i]) * dl_dx1
             dl_dw1 = dl_dw[N-1-i]
             dl_db1 = dl_db[N-1-i]
-            
-            dl_dw1.add_(dl_ds1.view(-1, 1).mm(x[N-1-i].view(1, -1)))
+             
+            dl_dw1.add_(x[N-1-i].view(x[N-1-i].size(0),x[N-1-i].size(1),1).matmul(dl_ds1.view(dl_ds1.size(0),1,dl_ds1.size(1))))
             dl_db1.add_(dl_ds1)
             out_dl_dw.insert(0,dl_dw1)
             out_dl_db.insert(0,dl_db1)
@@ -235,11 +243,11 @@ class Net(Module):
     def assign(self, train,train_target):
         
         if len(train_input.size())>1 : 
-            self.train = train.t()
-            self.train_target = train_target.t()
+            self.train = train
+            self.train_target = train_target
             self.num_sample = train.size(0)
-            self.dl_dw = [empty(p.param()[0].size(0),p.param()[0].size(1),self.num_sample) for p in self.Parameters]
-            self.dl_db = [empty(p.param()[1].size(0),self.num_sample) for p in self.Parameters]
+            self.dl_dw = [empty(self.num_sample,p.param()[0].size(0),p.param()[0].size(1)) for p in self.Parameters]
+            self.dl_db = [empty(self.num_sample,p.param()[1].size(0)) for p in self.Parameters]
         else : 
             self.num_sample = 1
             self.train = train
@@ -290,7 +298,7 @@ def generate_disc_set(nb):
     input = empty(nb, 2).uniform_(-1, 1)
     target = input.pow(2).sum(1).sub(2 / math.pi).sign().add(1).div(2).long()
     
-    return input, target#one_hot(target)
+    return input, one_hot(target)
 
 
 # In[13]:
@@ -309,7 +317,7 @@ test_input.sub_(mean).div_(std)
 mini_batch_size = 100
 
 
-nb_classes = 1#train_target.size(1)
+nb_classes = train_target.size(1)
 nb_train_samples = train_input.size(0)
 
 zeta = 0.90
@@ -321,7 +329,7 @@ eta = 1e-1 / nb_train_samples
 epsilon = 1e-6
 
 
-net = Sequential(Linear (train_input.size(1),25),Tanh(),Linear( 25,25),Relu(),Linear( 25,nb_classes),Tanh()).init_net()
+net = Sequential(Linear (train_input.size(1),25),Relu(),Linear( 25,25),Tanh(),Linear( 25,nb_classes),Relu()).init_net()
 
 loss = Loss(MSE(),net)
 
@@ -333,11 +341,6 @@ for e in range(nb_epochs):
 
     # Back-prop
 
-
-    
-        
-
-        
         net.assign(train_input.narrow(0, b, mini_batch_size),train_target.narrow(0, b, mini_batch_size))
         net.zero_grad()
         loss.backward()
@@ -346,8 +349,8 @@ for e in range(nb_epochs):
    
     for i in range(len(net.param())):
         dl_dw ,dl_db = net.get_grad(i)
-        new_w=net.param()[i].param()[0]-eta * dl_dw 
-        new_b=net.param()[i].param()[1]-eta* dl_db 
+        new_w=net.param()[i].param()[0]-eta * dl_dw.sum(0)  #en faisant que n(t,b) sot séquentielle
+        new_b=net.param()[i].param()[1]-eta* dl_db.sum(0) 
         net.set_param(i,new_w,new_b)
 
     
@@ -356,15 +359,15 @@ for e in range(nb_epochs):
     nb_test_errors = 0
     
     for n in range(test_input.size(0)):
-        input = test_input[n]
-        x,s = net.forward(input)
+        x,s = net.forward(test_input[n])
         x2 = x[-1]
-        #pred = x2.max(0)[1].item()
-        if (test_target[n]-x2).abs() < 0.5:
-            nb_test_errors = nb_test_errors + 1
+        pred = x2.max(0)[1].item()
+        if test_target[n][ pred] < 0.5:
+            nb_test_errors +=  1
+       
 
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% test_error {:.02f}%'
-          .format(k,
+          .format(e,
                   loss.acc_loss,
                   (100 * loss.nb_train_errors) / train_input.size(0),
                   (100 * nb_test_errors) / test_input.size(0)))
@@ -372,51 +375,19 @@ for e in range(nb_epochs):
     loss.acc_loss=0
 
 
-# In[ ]:
-
-
-net.num_sample
-
-
-# In[ ]:
+# In[14]:
 
 
 #MSE logging the loss signifie -> faire un entrainement avec log(mse) ou bien apres l'entrianemetn pour l'évaluation apprliquer le log ?? 
 
 
-# In[ ]:
+# In[15]:
 
 
-# a faire le SGD ! :
-    #1 faire le asigne assigne un train qui est un batch
-# pourquoi mon erreur augmente ??? 
+
 # que signifie 3 couche caché avec 25 unité ? 
 # comment faire en sorte que le predict soit bien ? 
 # vaut mieux avoir une sortie a savoir une valeur et voir si elle se rapproche de la valeur recherché ? 
 # faire un plot avec avec un entrainement d'un ensemble de valeur dans un carré uniforme et voir quel sont les valeur correctment classifié 
 # est ce que j'utilise vrm la puissance des tenseur ??? 
-
-
-# In[ ]:
-
-
-net.train.size()
-
-
-# In[ ]:
-
-
-empty(empty(3,2).size())
-
-
-# In[ ]:
-
-
-empty(3,6).zero_().add(1).mm(empty(6,2).zero_().add(2))
-
-
-# In[ ]:
-
-
-
 
