@@ -37,8 +37,8 @@ class Linear(Module):
         epsilon = 1e-6
         self.hidden_size = hidden_size
         self.input_size = input_size
-        self.weights=(empty(input_size, hidden_size).normal_(0,epsilon))#Weight
-        self.biais=( empty(hidden_size).normal_(0,epsilon)) #bias
+        self.weights=empty(input_size, hidden_size).uniform_(-1/math.sqrt(input_size),1/math.sqrt(input_size))#(empty(input_size, hidden_size).normal_(0,epsilon))#Weight
+        self.biais=empty(hidden_size).uniform_(-1/math.sqrt(input_size),1/math.sqrt(input_size))#( empty(hidden_size).normal_(0,epsilon)) #bias
 
     def sigma(self,x):
         out = 0
@@ -97,6 +97,23 @@ class MSE(Module):
 # In[6]:
 
 
+class logMSE(Module): 
+    def __init__(self):
+        super().__init__()
+    def sigma(self,x,y):
+
+        
+        return (x - y).pow(2).sum().log().mul(-1)
+    def dsigma(self,x,y):
+        #if len(y.size())>1:
+        #    y = y.argmax(0)
+            
+        return 2*(x - y)*((x - y).pow(2).sum()).pow(-1)
+
+
+# In[7]:
+
+
 class Loss(Module):  
     def __init__(self,loss,net):
         super().__init__()
@@ -119,7 +136,7 @@ class Loss(Module):
         #print(self.net.train_target.size())
         for n in range(self.net.num_sample):
             x2 = x[-1][n]
-            pred = x2.max(0)[1].item()
+            pred = x2.argmax().item()
             #print('n',pred)
             if self.net.train_target[n][ pred] < 0.5:
                 self.nb_train_errors +=  1
@@ -130,7 +147,7 @@ class Loss(Module):
         self.net.backward(*gradwrtoutput)
 
 
-# In[7]:
+# In[8]:
 
 
 class CrossEntropy(Module):
@@ -147,7 +164,7 @@ class CrossEntropy(Module):
    
 
 
-# In[8]:
+# In[9]:
 
 
 class Relu( Module ) :
@@ -162,7 +179,7 @@ class Relu( Module ) :
    
 
 
-# In[9]:
+# In[10]:
 
 
 class Net(Module):
@@ -256,7 +273,7 @@ class Net(Module):
             self.dl_db = [empty(p.param()[1].size()) for p in self.Parameters]
 
 
-# In[10]:
+# In[11]:
 
 
 class Sequential(Module):
@@ -278,7 +295,7 @@ class Sequential(Module):
         return net 
 
 
-# In[11]:
+# In[12]:
 
 
 def one_hot(a):
@@ -291,7 +308,7 @@ def one_hot(a):
         
 
 
-# In[12]:
+# In[13]:
 
 
 def generate_disc_set(nb):
@@ -301,7 +318,7 @@ def generate_disc_set(nb):
     return input, one_hot(target)
 
 
-# In[13]:
+# In[14]:
 
 
 
@@ -329,12 +346,12 @@ eta = 1e-1 / nb_train_samples
 epsilon = 1e-6
 
 
-net = Sequential(Linear (train_input.size(1),25),Relu(),Linear( 25,25),Tanh(),Linear( 25,nb_classes),Relu()).init_net()
+net = Sequential(Linear (train_input.size(1),(nb_hidden)),Tanh(),Linear( nb_hidden,nb_hidden),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_hidden),Tanh(),Linear( nb_hidden,nb_classes),Tanh()).init_net()
 
 loss = Loss(MSE(),net)
 
 
-nb_epochs = 250
+nb_epochs = 1000
 
 for e in range(nb_epochs):
     for b in range(0, train_input.size(0), mini_batch_size):
@@ -360,8 +377,11 @@ for e in range(nb_epochs):
     
     for n in range(test_input.size(0)):
         x,s = net.forward(test_input[n])
+        #print('test_input',test_input[n])
         x2 = x[-1]
-        pred = x2.max(0)[1].item()
+        pred = x2.argmax().item()
+        #print('n',n,'x2',x2)
+        #print(pred)
         if test_target[n][ pred] < 0.5:
             nb_test_errors +=  1
        
@@ -375,19 +395,71 @@ for e in range(nb_epochs):
     loss.acc_loss=0
 
 
-# In[14]:
+# In[35]:
 
 
-#MSE logging the loss signifie -> faire un entrainement avec log(mse) ou bien apres l'entrianemetn pour l'évaluation apprliquer le log ?? 
+from torch import save
+from torch import load
+out = {}
+i=0
+s = 'W'
+b = 'b'
+for p in net.param():
+    out[s+str(i)]=p.param()[0]
+    out[b+str(i)]=p.param()[1]
+    i+=1
+save(out,'./project_parameters')
+a = load('./project_parameters')
 
 
-# In[15]:
+# In[51]:
 
 
+save(net,'./project_net_1')
 
+
+# In[50]:
+
+
+# avec comme fonction d'activation que des tanh 
+out
+
+
+# In[48]:
+
+
+import matplotlib.pyplot as plt
+for n in range(test_input.size(0)):
+        x,s = net.forward(test_input[n])
+        #print('test_input',test_input[n])
+        x2 = x[-1]
+        pred = x2.argmax().item()
+        #print('n',n,'x2',x2)
+        #print(pred)
+        #print(test_input[n][0].item())
+        if test_target[n][ pred] < 0.5:
+            
+            plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='red')
+            #nb_test_errors +=  1
+        else : 
+            plt.scatter(test_input[n][0].item(),test_input[n][1].item(),c='blue')
+            #plt.scatter(test_input[n],'b')
+plt.show()
+
+
+# In[17]:
+
+
+# à faire implémenter l'initialisation des paramètres comme expliquer dans le cours .
 # que signifie 3 couche caché avec 25 unité ? 
 # comment faire en sorte que le predict soit bien ? 
 # vaut mieux avoir une sortie a savoir une valeur et voir si elle se rapproche de la valeur recherché ? 
 # faire un plot avec avec un entrainement d'un ensemble de valeur dans un carré uniforme et voir quel sont les valeur correctment classifié 
 # est ce que j'utilise vrm la puissance des tenseur ??? 
+
+
+# In[53]:
+
+
+b = load('./project_net_1')
 
