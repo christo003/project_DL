@@ -7,7 +7,11 @@ from time import time
 import matplotlib.pyplot as plt
 
 import NNmodule as nn
-
+from NNmodule import MSE
+from NNmodule import SGD
+from NNmodule import Linear
+from NNmodule import Tanh
+from NNmodule import Relu
 set_grad_enabled(False)
 
 
@@ -58,14 +62,14 @@ nb_classes = train_target.size(1)
 
 
 
-net = nn.Sequential(nn.Linear (train_input.size(1),(nb_hidden)),nn.Relu(),
-                 nn.Linear( nb_hidden,nb_hidden),nn.Tanh(),
-                 nn.Linear( nb_hidden,nb_hidden),nn.Relu(),
-                 nn.Linear( nb_hidden,nb_hidden),nn.Relu(),
-                 nn.Linear( nb_hidden,nb_classes),nn.Tanh()).init_net()
+net = nn.Sequential(Linear (train_input.size(1),(nb_hidden)),Relu(),
+                 Linear( nb_hidden,nb_hidden),Tanh(),
+                 Linear( nb_hidden,nb_hidden),Relu(),
+                 Linear( nb_hidden,nb_hidden),Relu(),
+                 Linear( nb_hidden,nb_classes),Tanh()).init_net()
 
-loss = nn.Loss(nn.MSE(),net)
-optimizer= nn.SGD(net,eta)
+loss = nn.Loss(MSE(),net)
+optimizer= SGD(net,eta)
 
 
 test_error = empty(nb_epochs).zero_()
@@ -74,7 +78,7 @@ train_acc = empty(nb_epochs).zero_()
 
 
 
-zeit = empty(nb_epochs,nb_train_samples).zero_()
+zeit = empty(nb_epochs,int(nb_train_samples/mini_batch_size)).zero_()
 for e in range(nb_epochs):
     i=0
     loss.nb_train_errors  = 0
@@ -82,10 +86,11 @@ for e in range(nb_epochs):
 
     for b in range(0, train_input.size(0), mini_batch_size):
 
-    # Back-prop
+
 
         net.assign(train_input.narrow(0, b, mini_batch_size),train_target.narrow(0, b, mini_batch_size))
         tic = time()
+    	# Back-prop
         loss.backward()#This function call the forward method of the network then the backward for calculating the accumulators
         toc = time()
         zeit[e][i]=(toc-tic)
