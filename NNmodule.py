@@ -278,15 +278,44 @@ class SGD(Module):
         super().__init__()
         self.net = net
         self.lr = lr
+        self.grad_norm = 1
+        self.nb_param = len(self.net.param())
+        self.grad_w =[0 for i in range(self.nb_param)] 
+        self.grad_b =[0 for i in range(self.nb_param)] 
+        self.prev_grad_w = self.grad_w
+        self.prev_grad_b = self.grad_b
     def sigma(self,param,grad):
         out=[]
+        g=[]
         for i in range(len(param)):
+            g.append(grad[i].sum(0))
             out.append(param[i] - self.lr * grad[i].sum(0) ) #en faisant que n(t,b) sot séquentielle
-        return out
+        return out,g
     def step(self):
-        for i in range(len(self.net.param())):
-            new_w,new_b=self.sigma(self.net.get_param(i),self.net.get_grad(i))
+        for i in range(self.nb_param):
+            [new_w,new_b],[grad_w,grad_b]=self.sigma(self.net.get_param(i),self.net.get_grad(i))
             self.net.set_param(i,new_w,new_b)
+            self.grad_w[i]+= grad_w
+            self.grad_b[i]+=grad_b
+    def get_grad_norm(self):
+        out=[]
+        for i in range(self.nb_param):
+            grad_w ,grad_b,prev_grad_w,prev_grad_b = self.grad_w[i],self.grad_b[i],self.prev_grad_w[i],self.prev_grad_b[i]
+            norm_grad_w=(grad_w.t().mm(grad_w).eig()[0].max().sqrt().item())
+            norm_grad_b=(grad_b.pow(2).sum().sqrt().item())
+            #angle_b,angle_w= prev_grad_b.vdot(grad_b).item(),prev_grad_w.t().mm(grad_w).trace().item()
+            #print('norm_grad_w ' ,norm_grad_w)
+            #print('norm_grad_b' , norm_grad_b)
+            #print('angle_b',angle_b)
+            #print('angle_w',angle_w)
+            #out.append(angle_b)
+            #out.append(angle_w)
+            out.append(norm_grad_w)
+            out.append(norm_grad_b)
+            #self.prev_grad_w[i],self.prev_grad_b[i] = grad_w.clone(),grad_b.clone()
+            self.grad_w[i].zero_()
+            self.grad_b[i].zero_()
+        return min(out) 
 
 
 
@@ -297,8 +326,8 @@ class SGD(Module):
 class Net(Module):
     def __init__(self):
         super().__init__()
-        self.Parameters = [] #List of fully connected layers
-        self.Activation = [] #List of activation functions
+        self.List_Parameters = [] #List of fully connected layers
+        self.List_Activation = [] #List of activation functions
         self.dl_dw=0
         self.dl_db=0
         self.train = []
@@ -307,9 +336,9 @@ class Net(Module):
         self.num_parameters = 0
     def forward(self,*input):
         x=input[0]
-        for i in range(len(self.Activation)):
-            s = self.Parameters[i].forward(x)
-            x = self.Activation[i].forward(x,s)
+        for i in range(len(self.List_Activation)):
+            s = self.List_Parameters[i].forward(x)
+            x = self.List_Activation[i].forward(x,s)
         return x
 
     def backward(self,*gradwrtoutput):
@@ -318,34 +347,34 @@ class Net(Module):
         """
         N=self.num_parameters
         dl_dx = gradwrtoutput[0]
-        dl_ds,dl_dw = self.Activation[-1].backward(dl_dx)
+        dl_ds,dl_dw = self.List_Activation[-1].backward(dl_dx)
         self.dl_dw[-1].add_(dl_dw)
         self.dl_db[-1].add_(dl_ds)
 
         for i in range(N-1,0,-1): #Backpropagate for each layer once we took care of the loss
-            dl_dx = self.Parameters[i].backward(dl_ds)
-            dl_ds,dl_dw = self.Activation[i-1].backward(dl_dx)
+            dl_dx = self.List_Parameters[i].backward(dl_ds)
+            dl_ds,dl_dw = self.List_Activation[i-1].backward(dl_dx)
             self.dl_dw[i-1].add_(dl_dw)
             self.dl_db[i-1].add_(dl_ds)
             
             
             
     def param(self):
-        return self.Parameters
+        return self.List_Parameters
     
-    def init(self,new_Parameters,new_Activation):
-        self.num_parameters= len(new_Parameters)
-        self.Parameters= new_Parameters
-        self.Activation = new_Activation
+    def init(self,new_List_Parameters,new_List_Activation):
+        self.num_parameters= len(new_List_Parameters)
+        self.List_Parameters= new_List_Parameters
+        self.List_Activation = new_List_Activation
 
     def set_param(self,num_layer,new_w,new_b):
-        self.Parameters[num_layer].set_param(new_w,new_b)
+        self.List_Parameters[num_layer].set_param(new_w,new_b)
         
     def get_grad(self,num_layer):
         return [self.dl_dw[num_layer],self.dl_db[num_layer]]
     
     def get_param(self,num_layer):
-        return self.Parameters[num_layer].param()
+        return self.List_Parameters[num_layer].param()
     
     def zero_grad(self):
         for dw in self.dl_dw:
@@ -361,8 +390,8 @@ class Net(Module):
             self.train_target = train_target
             if train.size(0)!=self.num_sample:
                 self.num_sample = train.size(0)
-                self.dl_dw = [empty(self.num_sample,p.param()[0].size(0),p.param()[0].size(1)).zero_() for p in self.Parameters]
-                self.dl_db = [empty(self.num_sample,p.param()[1].size(0)).zero_() for p in self.Parameters]
+                self.dl_dw = [empty(self.num_sample,p.param()[0].size(0),p.param()[0].size(1)).zero_() for p in self.List_Parameters]
+                self.dl_db = [empty(self.num_sample,p.param()[1].size(0)).zero_() for p in self.List_Parameters]
                    
         else : 
             self.num_sample = 1
@@ -380,8 +409,8 @@ class Sequential(Module):
         self.layers = layers 
     def init_net(self):
         net = Net()
-        new_Parameters=[]
-        new_Activation=[]
+        new_List_Parameters=[]
+        new_List_Activation=[]
         i = 0
         for k in range(len(self.layers)-1,-1,-1) : 
             if np.mod(i,2)==0:
@@ -389,13 +418,13 @@ class Sequential(Module):
                     gain=5/3
                 if type(self.layers[k])==type(Relu()):
                     gain=math.sqrt(2.0)
-                new_Activation.insert(0,Activation(self.layers[k]))
+                new_List_Activation.insert(0,Activation(self.layers[k]))
                 
             else : 
                 
-                new_Parameters.insert(0,Parameters(self.layers[k],gain))
+                new_List_Parameters.insert(0,Parameters(self.layers[k],gain))
             i=i+1
-        net.init(new_Parameters,new_Activation)
+        net.init(new_List_Parameters,new_List_Activation)
         return net 
 
 

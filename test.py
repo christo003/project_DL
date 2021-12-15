@@ -41,21 +41,20 @@ def generate_disc_set(nb):
 
 
 nb_train_samples=1000
-nb_test_samples=1000
-nb_epochs = 1000
+nb_validation_samples=1000
+nb_epochs = 2000
 nb_hidden = 25
-mini_batch_size = 100
-eta = 1e-1 / nb_train_samples
-epsilon = 1e-6
+mini_batch_size =250 
+eta = 1e-2 / nb_train_samples
+epsilon = 1e-3
 
 
 train_input, train_target = generate_disc_set(nb_train_samples)
-test_input, test_target = generate_disc_set(nb_test_samples)
+validation_input, validation_target = generate_disc_set(nb_validation_samples)
 
 mean, std = train_input.mean(), train_input.std()
-test_plot = test_input.clone()
 train_input.sub_(mean).div_(std)
-test_input.sub_(mean).div_(std)
+validation_input.sub_(mean).div_(std)
 
 
 nb_classes = train_target.size(1)
@@ -63,23 +62,25 @@ nb_classes = train_target.size(1)
 
 
 net = nn.Sequential(Linear (train_input.size(1),(nb_hidden)),Relu(),
+                 Linear( nb_hidden,nb_hidden),Relu(),
                  Linear( nb_hidden,nb_hidden),Tanh(),
                  Linear( nb_hidden,nb_hidden),Relu(),
-                 Linear( nb_hidden,nb_hidden),Relu(),
-                 Linear( nb_hidden,nb_classes),Tanh()).init_net()
+                 Linear( nb_hidden,nb_classes),Relu()).init_net()
 
 loss = nn.Loss(MSE(),net)
 optimizer= SGD(net,eta)
 
 
-test_error = empty(nb_epochs).zero_()
-train_error = empty(nb_epochs).zero_()
-train_acc = empty(nb_epochs).zero_()
+validation_error = []
+train_error = []
+train_acc = []
 
 
-
-zeit = empty(nb_epochs,int(nb_train_samples/mini_batch_size)).zero_()
-for e in range(nb_epochs):
+e=0
+list_grad_norm = []
+grad_norm=100000
+zeit = []
+while (e<nb_epochs)&(grad_norm>epsilon):#(optimizer.get_grad_norm()>epsilon):# in range(nb_epochs):
     i=0
     loss.nb_train_errors  = 0
     loss.acc_loss=0
@@ -93,35 +94,41 @@ for e in range(nb_epochs):
     	# Back-prop
         loss.backward()#This function call the forward method of the network then the backward for calculating the accumulators
         toc = time()
-        zeit[e][i]=(toc-tic)
+        zeit.append((toc-tic))
         i+=1
         # Gradient step with SGD
         optimizer.step()
     net.zero_grad()
     
-    # Test error
-    nb_test_errors,_=loss.predict(net.forward(test_input),test_target)   
-    print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% test_error {:.02f}%'
+    # validation error
+    grad_norm = optimizer.get_grad_norm()/nb_train_samples
+    list_grad_norm.append(grad_norm)
+    nb_test_errors,_=loss.predict(net.forward(validation_input),validation_target)   
+    print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% validation_error {:.02f}% grad_norm {:.05f}'
           .format(e,
-                  loss.acc_loss.log(),
-                  (100 * loss.nb_train_errors) / train_input.size(0),
-                  (100 * nb_test_errors) / test_input.size(0)))
+                  loss.acc_loss,
+                  (100 * loss.nb_train_errors) / nb_train_samples,
+                  (100 * nb_test_errors) / nb_validation_samples,grad_norm))
    
-    test_error[e]=(100 * nb_test_errors) / test_input.size(0)
-    train_error[e]=(100 * loss.nb_train_errors) / train_input.size(0)
-    train_acc[e]=loss.acc_loss.log()
-
+    validation_error.append((100 * nb_test_errors) / validation_input.size(0))
+    train_error.append((100 * loss.nb_train_errors) / train_input.size(0))
+    train_acc.append(loss.acc_loss)
+    e+=1
+    
 
 
 
 	# plot errors 
-plt.figure()
-plt.semilogy(test_error,label='test_error')
-plt.semilogy(train_error,label='train_error')
+
+plt.figure(0)
+plt.semilogy(train_acc,label='train_acc')
+plt.semilogy(list_grad_norm,label='grad_norm')
 plt.legend()
 plt.show()
-plt.figure()
-plt.semilogy(train_acc,label='train_acc')
+
+plt.figure(1)
+plt.semilogy(validation_error,label='validation_error')
+plt.semilogy(train_error,label='train_error')
 plt.legend()
 plt.show()
 
@@ -133,9 +140,23 @@ from torch import cat
 save(net,'./project_net_hybrid')
 
 
+# test error
+nb_test_samples = 1000
+test_input,test_target = generate_disc_set(nb_test_samples)
+test_plot = test_input.clone()
+test_input.sub_(mean).div_(std)
+
+x = net.forward(test_input)
+nb_test_errors,test_acc=loss.predict(x,test_target)   
+
+print('\nacc_train_error {:.02f}% acc_test_error {:.02f}%'
+          .format(
+                  (100 * loss.nb_train_errors) / nb_train_samples,
+                  (100 * nb_test_errors) / nb_test_samples))
+                  
 
 	#plot representation graphique
-x = net.forward(test_input)
+
 pred_class0 = (x.argmax(1)-1).nonzero()        
 pred_class1 = x.argmax(1).nonzero()
 class0 =(test_target.argmax(1)-1).nonzero()
@@ -157,31 +178,50 @@ combined = cat((miss_classify1.view(-1), class1.view(-1)))
 uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
 
-plt.figure()
-plt.scatter(test_plot[well_classify1].t()[0],test_plot[well_classify1].t()[1],c='red')
-plt.scatter(test_plot[well_classify0].t()[0],test_plot[well_classify0].t()[1],c='blue')
-plt.scatter(test_plot[miss_classify0].t()[0],test_plot[miss_classify0].t()[1],c='cyan',label='blue_misclassified')
-plt.scatter(test_plot[miss_classify1].t()[0],test_plot[miss_classify1].t()[1],c='yellow',label='red_misclassified')
-plt.legend()
-plt.show()
 
 
-
-x = net.forward(test_input)
 pred_class0 = (x.argmax(1)-1).nonzero()        
 pred_class1 = x.argmax(1).nonzero()
 class0 =(test_target.argmax(1)-1).nonzero().view(-1)
 class1 =(test_target.argmax(1)).nonzero().view(-1)
 
-plt.figure()
+fig , (ax1,ax2)=plt.subplots(1,2)
+ax1.set_title('target classe')
+ax1.set(xlim=(0, 1), ylim=(0, 1))
 combined = cat((miss_classify1.view(-1), class1.view(-1)))
 uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
-plt.scatter(test_plot[class1].t()[0],test_plot[class1].t()[1],c='red')
-plt.scatter(test_plot[class0].t()[0],test_plot[class0].t()[1],c='blue')
+ax1.scatter(test_plot[class1].t()[0],test_plot[class1].t()[1],c='red')
+ax1.scatter(test_plot[class0].t()[0],test_plot[class0].t()[1],c='blue')
+ax2.set(xlim=(0, 1), ylim=(0, 1))
+ax2.set_title('Classification from NNs model')
+ax2.scatter(test_plot[well_classify1].t()[0],test_plot[well_classify1].t()[1],c='red')
+ax2.scatter(test_plot[well_classify0].t()[0],test_plot[well_classify0].t()[1],c='blue')
+ax2.scatter(test_plot[miss_classify0].t()[0],test_plot[miss_classify0].t()[1],c='cyan',label='blue_misclassified')
+ax2.scatter(test_plot[miss_classify1].t()[0],test_plot[miss_classify1].t()[1],c='yellow',label='red_misclassified')
+
+w = net.param()[0].param()[0]
+b = net.param()[0].param()[1]
+a = lambda x:  x.mul_(-w[0]).sub_(b).div_(w[1])
+
+color = '-k'
+#color = ['b-','b--','b-.','b:','g-','g--','g-.','g:','r-','r--','r-.','r:','c-','c--','c-.','c:','m-','m--','m-.','m:',
+#'y-','y--','y-.','y:','k-','k--','k-.','k:']
+
+
+
+x = empty(2,25).zero_()
+x[0].add_(-1)
+x[1].add_(1)
+y = empty(2,25).zero_()
+y[0].add_(-1)
+y[1].add_(1)
+y=a(y) 
+ax2.plot(x.div(2).add(0.5),y.div(2).add(0.5),'g-')
+ax2.legend()
 plt.show()
 
-
-
-print('moyenne des temps par backward : ',zeit.mean())
-print('temps d entrainement totale : ', zeit.sum())
+from numpy import array
+zeit=array(zeit)
+print('\nmoyenne des temps par backward : ',zeit.mean())
+print('\ntemps d entrainement totale : ', zeit.sum(),'\n')
