@@ -10,7 +10,6 @@ from matplotlib import pyplot as plt
 
 import torchvision
 from comparisonNets import comparisonNet, comparisonNetWS, comparisonNetWSAuxLoss
-print(len(generate_pair_sets(1)))
 
 import sklearn
 import random
