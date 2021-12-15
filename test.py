@@ -30,8 +30,8 @@ def one_hot(a):
 
 
 def generate_disc_set(nb):
-    input = empty(nb, 2).uniform_(-1, 1)
-    target = input.pow(2).sum(1).sub(2 / math.pi).sign().add(1).div(2).long()
+    input = empty(nb, 2).uniform_(0, 1)
+    target = input.sub(1/2).pow(2).sum(1).sub(1 / (2*math.pi)).sign().add(1).div(2).long()
     
     return input, one_hot(target)
 
@@ -53,7 +53,7 @@ train_input, train_target = generate_disc_set(nb_train_samples)
 test_input, test_target = generate_disc_set(nb_test_samples)
 
 mean, std = train_input.mean(), train_input.std()
-
+test_plot = test_input.clone()
 train_input.sub_(mean).div_(std)
 test_input.sub_(mean).div_(std)
 
@@ -158,10 +158,10 @@ uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
 
 plt.figure()
-plt.scatter(test_input[well_classify1].t()[0],test_input[well_classify1].t()[1],c='red')
-plt.scatter(test_input[well_classify0].t()[0],test_input[well_classify0].t()[1],c='blue')
-plt.scatter(test_input[miss_classify0].t()[0],test_input[miss_classify0].t()[1],c='cyan',label='blue_misclassified')
-plt.scatter(test_input[miss_classify1].t()[0],test_input[miss_classify1].t()[1],c='yellow',label='red_misclassified')
+plt.scatter(test_plot[well_classify1].t()[0],test_plot[well_classify1].t()[1],c='red')
+plt.scatter(test_plot[well_classify0].t()[0],test_plot[well_classify0].t()[1],c='blue')
+plt.scatter(test_plot[miss_classify0].t()[0],test_plot[miss_classify0].t()[1],c='cyan',label='blue_misclassified')
+plt.scatter(test_plot[miss_classify1].t()[0],test_plot[miss_classify1].t()[1],c='yellow',label='red_misclassified')
 plt.legend()
 plt.show()
 
@@ -177,8 +177,8 @@ plt.figure()
 combined = cat((miss_classify1.view(-1), class1.view(-1)))
 uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
-plt.scatter(test_input[class1].t()[0],test_input[class1].t()[1],c='red')
-plt.scatter(test_input[class0].t()[0],test_input[class0].t()[1],c='blue')
+plt.scatter(test_plot[class1].t()[0],test_plot[class1].t()[1],c='red')
+plt.scatter(test_plot[class0].t()[0],test_plot[class0].t()[1],c='blue')
 plt.show()
 
 
