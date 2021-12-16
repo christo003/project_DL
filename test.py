@@ -19,7 +19,6 @@ set_grad_enabled(False)
 
 
 
-
 def one_hot(a):
     num_class = a.max()+1
     N=a.size(0)
@@ -42,7 +41,7 @@ def generate_disc_set(nb):
 
 nb_train_samples=1000
 nb_validation_samples=1000
-nb_epochs = 20000
+nb_epochs = 1000
 nb_hidden = 25
 mini_batch_size =250 
 eta = 1e-2 / nb_train_samples
