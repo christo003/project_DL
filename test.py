@@ -42,11 +42,11 @@ def generate_disc_set(nb):
 
 nb_train_samples=1000
 nb_validation_samples=1000
-nb_epochs = 2000
+nb_epochs = 20000
 nb_hidden = 25
 mini_batch_size =250 
 eta = 1e-2 / nb_train_samples
-epsilon = 1e-3
+epsilon = nb_train_samples / nb_epochs 
 
 
 train_input, train_target = generate_disc_set(nb_train_samples)
@@ -146,7 +146,7 @@ while (e<nb_epochs)&(grad_norm>epsilon):#(optimizer.get_grad_norm()>epsilon):# i
     net.zero_grad()
     
     # validation error
-    grad_norm = optimizer.get_grad_norm()/nb_train_samples
+    grad_norm = optimizer.get_grad_norm()#/nb_train_samples
     list_grad_norm.append(grad_norm)
     nb_test_errors,_=loss.predict(net.forward(validation_input),validation_target)   
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% validation_error {:.02f}% grad_norm {:.05f}'
