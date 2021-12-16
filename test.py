@@ -1,3 +1,6 @@
+from torch import save
+from torch import load
+from torch import cat
 import math
 from torch import empty
 from torch import set_grad_enabled
@@ -37,9 +40,6 @@ def generate_disc_set(nb):
 
 
 
-
-
-
 nb_train_samples=1000
 nb_validation_samples=1000
 nb_epochs = 2000
@@ -56,6 +56,12 @@ mean, std = train_input.mean(), train_input.std()
 train_input.sub_(mean).div_(std)
 validation_input.sub_(mean).div_(std)
 
+nb_test_samples = 1000
+test_input,test_target = generate_disc_set(nb_test_samples)
+test_plot = test_input.clone()
+test_input.sub_(mean).div_(std)
+
+
 
 nb_classes = train_target.size(1)
 
@@ -66,6 +72,45 @@ net = nn.Sequential(Linear (train_input.size(1),(nb_hidden)),Relu(),
                  Linear( nb_hidden,nb_hidden),Tanh(),
                  Linear( nb_hidden,nb_hidden),Relu(),
                  Linear( nb_hidden,nb_classes),Relu()).init_net()
+
+# store inital weights for plot later
+w0 = net.param()[0].param()[0]
+b0 = net.param()[0].param()[1]
+a0 = lambda x:  x.mul_(-w0[0]).sub_(b0).div_(w0[1])
+
+
+x0 = empty(w0.size()).zero_()
+x0[0].add_(-1)
+x0[1].add_(1)
+y0 = empty(w0.size()).zero_()
+y0[0].add_(-1)
+y0[1].add_(1)
+y0=a0(y0) 
+
+xi = net.forward(test_input)
+ipred_class0 = (xi.argmax(1)-1).nonzero()
+ipred_class1 = xi.argmax(1).nonzero()
+iclass0 =(test_target.argmax(1)-1).nonzero()
+iclass1 =(test_target.argmax(1)).nonzero()
+combined = cat((ipred_class0, iclass0))
+uniques, counts = combined.unique(return_counts=True)
+imiss_classify0 = uniques[counts == 1]
+iwell_classify0 = uniques[counts > 1]
+combined = cat((ipred_class1, iclass1))
+uniques, counts = combined.unique(return_counts=True)
+imiss_classify1 = uniques[counts == 1]
+iwell_classify1 = uniques[counts > 1]
+
+combined = cat((imiss_classify0.view(-1), iclass0.view(-1)))
+uniques, counts = combined.unique(return_counts=True)
+imiss_classify0 = uniques[counts > 1]
+
+combined = cat((imiss_classify1.view(-1), iclass1.view(-1)))
+uniques, counts = combined.unique(return_counts=True)
+imiss_classify1 = uniques[counts > 1]
+
+
+#### start training ####
 
 loss = nn.Loss(MSE(),net)
 optimizer= SGD(net,eta)
@@ -134,17 +179,12 @@ plt.show()
 
 
 
-from torch import save
-from torch import load
-from torch import cat
+
 save(net,'./project_net_hybrid')
 
 
 # test error
-nb_test_samples = 1000
-test_input,test_target = generate_disc_set(nb_test_samples)
-test_plot = test_input.clone()
-test_input.sub_(mean).div_(std)
+
 
 x = net.forward(test_input)
 nb_test_errors,test_acc=loss.predict(x,test_target)   
@@ -185,16 +225,23 @@ pred_class1 = x.argmax(1).nonzero()
 class0 =(test_target.argmax(1)-1).nonzero().view(-1)
 class1 =(test_target.argmax(1)).nonzero().view(-1)
 
+
 fig , (ax1,ax2)=plt.subplots(1,2)
-ax1.set_title('target classe')
-ax1.set(xlim=(0, 1), ylim=(0, 1))
+ax1.set_title('initial classification')
+ax1.set(xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
 combined = cat((miss_classify1.view(-1), class1.view(-1)))
 uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
-ax1.scatter(test_plot[class1].t()[0],test_plot[class1].t()[1],c='red')
-ax1.scatter(test_plot[class0].t()[0],test_plot[class0].t()[1],c='blue')
-ax2.set(xlim=(0, 1), ylim=(0, 1))
-ax2.set_title('Classification from NNs model')
+#ax1.scatter(test_plot[class1].t()[0],test_plot[class1].t()[1],c='red')
+#ax1.scatter(test_plot[class0].t()[0],test_plot[class0].t()[1],c='blue')
+ax1.scatter(test_plot[iwell_classify1].t()[0],test_plot[iwell_classify1].t()[1],c='red')
+ax1.scatter(test_plot[iwell_classify0].t()[0],test_plot[iwell_classify0].t()[1],c='blue')
+ax1.scatter(test_plot[imiss_classify0].t()[0],test_plot[imiss_classify0].t()[1],c='cyan',label='blue_misclassified')
+ax1.scatter(test_plot[imiss_classify1].t()[0],test_plot[imiss_classify1].t()[1],c='yellow',label='red_misclassified')
+ax1.legend()
+
+ax2.set(xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
+ax2.set_title('Classification after training')
 ax2.scatter(test_plot[well_classify1].t()[0],test_plot[well_classify1].t()[1],c='red')
 ax2.scatter(test_plot[well_classify0].t()[0],test_plot[well_classify0].t()[1],c='blue')
 ax2.scatter(test_plot[miss_classify0].t()[0],test_plot[miss_classify0].t()[1],c='cyan',label='blue_misclassified')
@@ -204,20 +251,23 @@ w = net.param()[0].param()[0]
 b = net.param()[0].param()[1]
 a = lambda x:  x.mul_(-w[0]).sub_(b).div_(w[1])
 
-color = '-k'
-#color = ['b-','b--','b-.','b:','g-','g--','g-.','g:','r-','r--','r-.','r:','c-','c--','c-.','c:','m-','m--','m-.','m:',
-#'y-','y--','y-.','y:','k-','k--','k-.','k:']
+marker_style = dict(linestyle='-', color='0.8', markersize=10,
+                    markerfacecolor="tab:blue", markeredgecolor="tab:blue")
+markers=['$'+str(i)+'$' for i in range(w.size(1))]
+marker_style.update(markeredgecolor="k", markersize=5)
 
 
-
-x = empty(2,25).zero_()
+x = empty(w.size()).zero_()
 x[0].add_(-1)
 x[1].add_(1)
-y = empty(2,25).zero_()
+y = empty(w.size()).zero_()
 y[0].add_(-1)
 y[1].add_(1)
 y=a(y) 
-ax2.plot(x.div(2).add(0.5),y.div(2).add(0.5),'g-')
+for i in range(w.size(1)):
+	ax1.plot(x0.div(2).add(0.5).t()[i],y0.div(2).add(0.5).t()[i], marker=markers[i], **marker_style)
+	ax2.plot(x.div(2).add(0.5).t()[i],y.div(2).add(0.5).t()[i], marker=markers[i], **marker_style)
+#format_axes(ax)
 ax2.legend()
 plt.show()
 
