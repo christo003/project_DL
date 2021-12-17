@@ -232,28 +232,24 @@ class Loss(Module):
     def assign(self, net):
         self.net = net 
     
-    def predict(self,x,test_target):
+    def predict(self,train,target):
         """"
         just to evaluate the prediction of the network on one mini-batch
         """
-        
-        return (test_target.argmax(1)!=x.argmax(1)).sum(),self.loss.sigma(x, test_target).sum()
+        x = self.net.forward(train)
+        pred=self.sigma(x.view(x.size(0),x.size(1),1),target.unique(dim=0))
+        return x,pred, (target.argmax(1)!=pred.argmax(1)).sum(),self.loss.sigma(x, target).sum()
             
         
     def backward(self,*gradwrtoutput):
         #This function call the forward method of the network for one mini-batch, and then the backward function of the network
-        x = self.net.forward(self.net.train)
-        
         #x has row of mini_batch size and column of linear output (before activation))
         #s has row of mini_batch size and column of activation function (after activation))   
-        nb_train_errors,acc_loss=self.predict(x,self.net.train_target)
+        x,pred,nb_train_errors,acc_loss =self.predict(self.net.train,self.net.train_target)
         self.nb_train_errors+=nb_train_errors
         self.acc_loss+=acc_loss
         dl_dx2 = self.loss.dsigma(x, self.net.train_target)
         self.net.backward(dl_dx2)
-
-
-
 
 
 class MSE(Module):
@@ -263,15 +259,16 @@ class MSE(Module):
     def __init__(self):
         super().__init__()       
     def sigma(self,x,y):      
-        return (x - y).pow(2).sum()
+        if x.size(0)>1:
+            out = (x - y).pow(2).sum(1)
+        else :
+            out = (x - y).pow(2).sum()
+        return out
     def dsigma(self,x,y):   
         return 2*(x - y)
     
 
-
 # ### Optimizer
-
-
 
 class SGD(Module):
     def __init__(self,net,lr):

@@ -1,6 +1,8 @@
 from torch import save
+from torch import split
 from torch import load
 from torch import cat
+from torch import randperm
 import math
 from torch import empty
 from torch import set_grad_enabled
@@ -41,11 +43,11 @@ def generate_disc_set(nb):
 
 nb_train_samples=1000
 nb_validation_samples=1000
-nb_epochs = 1000
+nb_epochs =1000 
 nb_hidden = 25
 mini_batch_size =250 
 eta = 1e-2 / nb_train_samples
-epsilon = nb_train_samples / nb_epochs 
+tol_grad = 1
 
 
 train_input, train_target = generate_disc_set(nb_train_samples)
@@ -54,6 +56,7 @@ validation_input, validation_target = generate_disc_set(nb_validation_samples)
 mean, std = train_input.mean(), train_input.std()
 train_input.sub_(mean).div_(std)
 validation_input.sub_(mean).div_(std)
+
 
 nb_test_samples = 1000
 test_input,test_target = generate_disc_set(nb_test_samples)
@@ -67,7 +70,7 @@ nb_classes = train_target.size(1)
 
 
 net = nn.Sequential(Linear (train_input.size(1),(nb_hidden)),Relu(),
-                 Linear( nb_hidden,nb_hidden),Relu(),
+                 Linear( nb_hidden,nb_hidden),Tanh(),
                  Linear( nb_hidden,nb_hidden),Tanh(),
                  Linear( nb_hidden,nb_hidden),Relu(),
                  Linear( nb_hidden,nb_classes),Relu()).init_net()
@@ -86,7 +89,8 @@ y0[0].add_(-1)
 y0[1].add_(1)
 y0=a0(y0) 
 
-xi = net.forward(test_input)
+loss = nn.Loss(MSE(),net)
+_,xi,_,_ = loss.predict(test_input,test_target)
 ipred_class0 = (xi.argmax(1)-1).nonzero()
 ipred_class1 = xi.argmax(1).nonzero()
 iclass0 =(test_target.argmax(1)-1).nonzero()
@@ -111,7 +115,6 @@ imiss_classify1 = uniques[counts > 1]
 
 #### start training ####
 
-loss = nn.Loss(MSE(),net)
 optimizer= SGD(net,eta)
 
 
@@ -124,14 +127,13 @@ e=0
 list_grad_norm = []
 grad_norm=100000
 zeit = []
-while (e<nb_epochs)&(grad_norm>epsilon):#(optimizer.get_grad_norm()>epsilon):# in range(nb_epochs):
+while (e<nb_epochs)&(grad_norm>tol_grad):
     i=0
     loss.nb_train_errors  = 0
     loss.acc_loss=0
+    train_input,train_target=split(cat((train_input,train_target),1)[randperm(nb_train_samples)],train_input.size(1),1)
 
     for b in range(0, train_input.size(0), mini_batch_size):
-
-
 
         net.assign(train_input.narrow(0, b, mini_batch_size),train_target.narrow(0, b, mini_batch_size))
         tic = time()
@@ -147,7 +149,7 @@ while (e<nb_epochs)&(grad_norm>epsilon):#(optimizer.get_grad_norm()>epsilon):# i
     # validation error
     grad_norm = optimizer.get_grad_norm()#/nb_train_samples
     list_grad_norm.append(grad_norm)
-    nb_test_errors,_=loss.predict(net.forward(validation_input),validation_target)   
+    _,_,nb_test_errors,_=loss.predict(validation_input,validation_target)   
     print('{:d} acc_train_loss {:.02f} acc_train_error {:.02f}% validation_error {:.02f}% grad_norm {:.05f}'
           .format(e,
                   loss.acc_loss,
@@ -185,8 +187,7 @@ save(net,'./project_net_hybrid')
 # test error
 
 
-x = net.forward(test_input)
-nb_test_errors,test_acc=loss.predict(x,test_target)   
+_,x,nb_test_errors,test_acc=loss.predict(test_input,test_target)   
 
 print('\nacc_train_error {:.02f}% acc_test_error {:.02f}%'
           .format(
@@ -227,7 +228,7 @@ class1 =(test_target.argmax(1)).nonzero().view(-1)
 
 fig , (ax1,ax2)=plt.subplots(1,2)
 ax1.set_title('initial classification')
-ax1.set(xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
+ax1.set(xlim=(-.2, 1.2), ylim=(-.2, 1.2))
 combined = cat((miss_classify1.view(-1), class1.view(-1)))
 uniques, counts = combined.unique(return_counts=True)
 miss_classify1 = uniques[counts > 1]
@@ -239,7 +240,7 @@ ax1.scatter(test_plot[imiss_classify0].t()[0],test_plot[imiss_classify0].t()[1],
 ax1.scatter(test_plot[imiss_classify1].t()[0],test_plot[imiss_classify1].t()[1],c='yellow',label='red_misclassified')
 ax1.legend()
 
-ax2.set(xlim=(-0.1, 1.1), ylim=(-0.1, 1.1))
+ax2.set(xlim=(-.2, 1.2), ylim=(-.2, 1.2))
 ax2.set_title('Classification after training')
 ax2.scatter(test_plot[well_classify1].t()[0],test_plot[well_classify1].t()[1],c='red')
 ax2.scatter(test_plot[well_classify0].t()[0],test_plot[well_classify0].t()[1],c='blue')
