@@ -142,8 +142,8 @@ while (e<nb_epochs)&(grad_norm>tol_grad):
         toc = time()
         zeit.append((toc-tic))
         i+=1
-    # Gradient step with SGD
-    optimizer.step()
+    	# Gradient step with SGD
+    	optimizer.step()
     net.zero_grad()
     
     # validation error
